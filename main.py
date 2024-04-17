@@ -7,7 +7,7 @@ if __name__ == "__main__":
 
     # ----------- SETTINGS
     # If you want to debug the webcam image
-    virtual_hand_webcam.set_debug(True)
+    virtual_hand_webcam.set_debug(False)
 
     # What resolution you want the webcam to be
     virtual_hand_webcam.set_desired_size(300, 300)
@@ -31,7 +31,7 @@ if __name__ == "__main__":
     virtual_hand_webcam.set_minimum_hand_movement(5)
 
     # Desired webcam id (depends on how many webcams you have)
-    virtual_hand_webcam.camera_capture_id = 1
+    virtual_hand_webcam.camera_capture_id = 0
 
     # What fps this webcam runs at
     virtual_hand_webcam.fps = 30
