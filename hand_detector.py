@@ -1,5 +1,6 @@
 import cv2
 import mediapipe as mp
+import numpy as np
 
 
 class HandDetector:
@@ -12,6 +13,9 @@ class HandDetector:
         self._last_crop_x2: int = self.desired_width
         self._last_crop_y1: int = 0
         self._last_crop_y2: int = self.desired_height
+
+        self._min_detection_confidence: float = 0.1
+        self._min_tracking_confidence: float = 0
 
         self.debug: bool = False
 
@@ -60,7 +64,7 @@ class HandDetector:
         mp_hands = mp.solutions.hands
 
         # Try to find hands
-        hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.7, min_tracking_confidence=0.5)
+        hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=self._min_detection_confidence, min_tracking_confidence=self._min_tracking_confidence)
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         results = hands.process(image_rgb)
 

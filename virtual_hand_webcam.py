@@ -1,9 +1,6 @@
-import colorsys
 from threading import Thread
 import cv2
-import numpy as np
 import pyvirtualcam
-
 from hand_detector import HandDetector
 
 
@@ -21,6 +18,10 @@ class VirtualHandWebcam:
         self._current_hand_frame = None
         self._current_full_frame = None
 
+    def set_hand_tracking_accuracy(self, min_detection_confidence: float, min_tracking_confidence: float) -> None:
+        self._hand_detector._min_detection_confidence = min_detection_confidence
+        self._hand_detector._min_tracking_confidence = min_tracking_confidence
+
     def set_desired_size(self, width: int, height: int) -> None:
         self._hand_detector.set_desired_size(width, height)
 
@@ -33,11 +34,14 @@ class VirtualHandWebcam:
 
     def _start_debug_windows(self) -> None:
         while self.running:
-            if self._current_hand_frame is None or self._current_full_frame is None:
+            if self._current_hand_frame is None and self._current_full_frame is None:
                 continue
 
-            cv2.imshow('Full capture', self._current_full_frame)
-            cv2.imshow('Hand only', self._current_hand_frame)
+            if self._current_full_frame is not None:
+                cv2.imshow('Full capture', self._current_full_frame)
+
+            if self._current_hand_frame is not None:
+                cv2.imshow('Hand only', self._current_hand_frame)
 
             # Check for 'q' key press to quit
             if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -61,9 +65,12 @@ class VirtualHandWebcam:
             print("Connected to the camera!")
             while self.running and cap.isOpened():
                 ret, frame = cap.read()
-                self._current_full_frame = frame
                 if not ret:
                     break
+
+                # Save the full frame
+                if self._debug:
+                    self._current_full_frame = frame
 
                 # Get the new frame
                 self._hand_detector.process_image(frame)
