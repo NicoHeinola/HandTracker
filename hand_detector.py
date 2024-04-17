@@ -1,3 +1,4 @@
+import math
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -6,18 +7,34 @@ import numpy as np
 class HandDetector:
     def __init__(self) -> None:
         self._hand_image = None
+        self._processed_image = None
+
         self.desired_width: int = 300
         self.desired_height: int = 300
 
+        # What position we are currently at on the hand cam
         self._last_crop_x1: int = 0
         self._last_crop_x2: int = self.desired_width
         self._last_crop_y1: int = 0
         self._last_crop_y2: int = self.desired_height
 
+        # What position we want to be at on the hand cam
+        self._destination_crop_x1: int = 0
+        self._destination_crop_x2: int = self.desired_width
+        self._destination_crop_y1: int = 0
+        self._destination_crop_y2: int = self.desired_height
+
+        # How "picky" the hand tracking ai is
         self._min_detection_confidence: float = 0.1
         self._min_tracking_confidence: float = 0
 
         self.debug: bool = False
+
+        # Transition related
+        self._transition_percentage: float = 0.5
+        self._transition_type: str = "halving"  # Available types: halving, exponential, sigmoid
+        self._transition_distance_min: float = 10
+        self._minimum_hand_movement: float = 5
 
     def set_desired_size(self, width: int, height: int):
         self.desired_width = width
@@ -27,6 +44,11 @@ class HandDetector:
         self._last_crop_x2: int = self.desired_width
         self._last_crop_y1: int = 0
         self._last_crop_y2: int = self.desired_height
+
+        self._destination_crop_x1: int = 0
+        self._destination_crop_x2: int = self.desired_width
+        self._destination_crop_y1: int = 0
+        self._destination_crop_y2: int = self.desired_height
 
     def get_bounding_box(self, hand, area_width: int, area_height: int):
         """
@@ -110,17 +132,17 @@ class HandDetector:
         return (small_x1, small_y1, small_x2, small_y2)
 
     def generate_image_of_hand(self, original_image):
-        processed_image, results = self.detect_hands(original_image, self.debug)
+        self._processed_image, results = self.detect_hands(original_image, self.debug)
 
         # If no hands were detected
         if not results.multi_hand_landmarks:
             # If there were no hands, crop it from the last position
-            cropped_image = processed_image[self._last_crop_y1:self._last_crop_y2, self._last_crop_x1:self._last_crop_x2]
+            cropped_image = self._processed_image[self._last_crop_y1:self._last_crop_y2, self._last_crop_x1:self._last_crop_x2]
             self._hand_image = cropped_image
             return
 
-        image_width = processed_image.shape[1]
-        image_height = processed_image.shape[0]
+        image_width = self._processed_image.shape[1]
+        image_height = self._processed_image.shape[0]
 
         # Get the hand bounding box
         main_hand = results.multi_hand_landmarks[0]
@@ -137,21 +159,55 @@ class HandDetector:
         crop_y2 = int(hand_center_y + self.desired_height / 2)
 
         crop_x1, crop_y1, crop_x2, crop_y2 = self.move_into_big_rect((0, 0, image_width, image_height), (crop_x1, crop_y1, crop_x2, crop_y2))
-        self._last_crop_x1 = crop_x1
-        self._last_crop_x2 = crop_x2
-        self._last_crop_y1 = crop_y1
-        self._last_crop_y2 = crop_y2
 
-        # Crop the processed image
-        cropped_image = processed_image[crop_y1:crop_y2, crop_x1:crop_x2]
+        # Let's determine if the hand has moved enough from the previous destination
+        destination_center_x = (self._destination_crop_x1 + self._destination_crop_x2) / 2
+        destination_center_y = (self._destination_crop_y1 + self._destination_crop_y2) / 2
+        new_destination_center_x = (crop_x1 + crop_x2) / 2
+        new_destination_center_y = (crop_y1 + crop_y2) / 2
 
-        if (self.debug):
-            cv2.rectangle(processed_image, (crop_x1, crop_y1), (crop_x2, crop_y2), (255, 0, 0), 2)
+        distance = math.sqrt((new_destination_center_x - destination_center_x)**2 + (new_destination_center_y - destination_center_y)**2)
 
-        self._hand_image = cropped_image
+        if (distance < self._minimum_hand_movement):
+            return
+
+        # If hand has moved enough, we can move the rectangle that tracks it
+        self._destination_crop_x1 = crop_x1
+        self._destination_crop_x2 = crop_x2
+        self._destination_crop_y1 = crop_y1
+        self._destination_crop_y2 = crop_y2
 
     def process_image(self, image):
         self.generate_image_of_hand(image)
 
     def get_image(self):
         return self._hand_image
+
+    def animate_image(self):
+
+        percentage = 1
+
+        last_center_x = (self._last_crop_x1 + self._last_crop_x2) / 2
+        last_center_y = (self._last_crop_y1 + self._last_crop_y2) / 2
+        destination_center_x = (self._destination_crop_x1 + self._destination_crop_x2) / 2
+        destination_center_y = (self._destination_crop_y1 + self._destination_crop_y2) / 2
+        distance = math.sqrt((destination_center_x - last_center_x)**2 + (destination_center_y - last_center_y)**2)
+
+        if self._transition_type == "linear":
+            percentage = self._transition_percentage
+        elif self._transition_type == "exponential":
+            percentage = math.exp(-self._transition_percentage * distance)
+        elif self._transition_type == "sigmoid":
+            percentage = 1 / (1 + math.exp(-self._transition_percentage * distance))
+
+        if distance < self._transition_distance_min:
+            percentage = 1
+
+        self._last_crop_x1 += round((self._destination_crop_x1 - self._last_crop_x1) * percentage)
+        self._last_crop_x2 += round((self._destination_crop_x2 - self._last_crop_x2) * percentage)
+        self._last_crop_y1 += round((self._destination_crop_y1 - self._last_crop_y1) * percentage)
+        self._last_crop_y2 += round((self._destination_crop_y2 - self._last_crop_y2) * percentage)
+
+        # Crop the processed image
+        cropped_image = self._processed_image[self._last_crop_y1:self._last_crop_y2, self._last_crop_x1:self._last_crop_x2]
+        self._hand_image = cropped_image

@@ -25,6 +25,18 @@ class VirtualHandWebcam:
     def set_desired_size(self, width: int, height: int) -> None:
         self._hand_detector.set_desired_size(width, height)
 
+    def set_transition_percentage(self, transition_percentage: float) -> None:
+        self._hand_detector._transition_percentage = transition_percentage
+
+    def set_transition_type(self, transition_type: str) -> None:
+        self._hand_detector._transition_type = transition_type
+
+    def set_transition_distance_min(self, transition_distance_min) -> None:
+        self._hand_detector._transition_distance_min = transition_distance_min
+
+    def set_minimum_hand_movement(self, minimum_hand_movement) -> None:
+        self._hand_detector._minimum_hand_movement = minimum_hand_movement
+
     def set_debug(self, isDebug: bool) -> None:
         self._debug = isDebug
         self._hand_detector.debug = isDebug
@@ -68,13 +80,15 @@ class VirtualHandWebcam:
                 if not ret:
                     break
 
-                # Save the full frame
-                if self._debug:
-                    self._current_full_frame = frame
-
                 # Get the new frame
                 self._hand_detector.process_image(frame)
+                self._hand_detector.animate_image()
                 self._current_hand_frame = self._hand_detector.get_image()
+
+                # Save the full frame
+                if self._debug:
+                    cv2.rectangle(frame, (self._hand_detector._last_crop_x1, self._hand_detector._last_crop_y1), (self._hand_detector._last_crop_x2, self._hand_detector._last_crop_y2), (255, 0, 0), 2)
+                    self._current_full_frame = frame
 
                 cam.send(self._current_hand_frame)
                 cam.sleep_until_next_frame()
